@@ -1,0 +1,6 @@
+echo "🔧 running lint-staged pre-commit hook..."
+pnpm exec lint-staged || {
+    echo "❌ lint-staged failed: commit aborted."
+    exit 1
+}
+echo "✅ lint-staged passed: proceeding with commit."
