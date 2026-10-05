@@ -1,4 +1,6 @@
-export default {
-  '*.{js,ts}': ['eslint --fix', 'prettier --write'],
-  '*.{json,md,yml,yaml}': ['prettier --write'],
+/** @type {import('lint-staged').Config} */
+const config = {
+  'src/**/*.{js,ts,jsx,tsx}': ['eslint --fix'],
 };
+
+export default config;
