@@ -2,7 +2,15 @@
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "resolvePackageJsonExports": true,
+    "paths": {
+      "#/modules/users/entities": ["./src/modules/users/entities/index.ts"],
+      "#/modules/conversations/entities": ["./src/modules/conversations/entities/index.ts"],
+      "#/modules/messages/entities": ["./src/modules/messages/entities/index.ts"],
+      "#/*": ["./src/*"]
+    },
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": true,
