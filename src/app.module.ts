@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
-import { validateEnvConfig } from './shared/configs/env.config.js';
+import { ConversationsModule } from './modules/conversations/conversations.module.ts';
+import { DatabaseModuleTsModule } from './modules/database/database.module.ts';
+import { UsersModule } from './modules/users/users.module.ts';
+import { validateEnvConfig } from './shared/configs/env.config.ts';
 
 @Module({
   imports: [
@@ -11,8 +12,11 @@ import { validateEnvConfig } from './shared/configs/env.config.js';
       envFilePath: '.env',
       validate: validateEnvConfig,
     }),
+    DatabaseModuleTsModule,
+    UsersModule,
+    ConversationsModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}
