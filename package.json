@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
-    "build": "nest build && tsc-alias -p tsconfig.build.json",
+    "build": "nest build && tsc-alias -p tsconfig.build.json --resolve-full-paths",
     "deploy": "nest deploy",
     "format": "pnpm --dir ai-chatbot-service format",
     "start": "nest start",
