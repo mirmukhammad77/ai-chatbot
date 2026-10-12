@@ -21,7 +21,7 @@ export class DatabaseService {
     const user = configService.get('DATABASE_USERNAME', { infer: true });
     const password = configService.get('DATABASE_PASSWORD', { infer: true });
 
-    const connectionString = `postgresql://${user}:${password}@${host}:${port}/${name}?schema=public`;
+    const connectionString = `postgresql://${user}:${password}@${host}:${port}/${name}`;
 
     this.db = drizzle({ connection: connectionString, relations });
   }
