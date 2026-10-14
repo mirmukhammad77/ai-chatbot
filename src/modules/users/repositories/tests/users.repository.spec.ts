@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { type SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { DatabaseService } from '../../../database/database.service.js';
+import type { Tx } from '../../../database/unit-of-work.js';
 import { type User } from '../../entities/index.js';
 import { UsersRepository } from '../users.repository.js';
 
@@ -21,6 +22,7 @@ describe('UsersRepository', () => {
       await expect(repository.findByEmail(email)).resolves.toBeNull();
       const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
       expect(query.sql).toContain('"users"."deleted_at" is null');
+      expect(query.sql).toContain('"users"."email" = $1');
       expect(query.params).toEqual([email]);
     } finally {
       await fixture.close();
@@ -101,6 +103,45 @@ describe('UsersRepository', () => {
       await expect(repository.create({ email: 'fail@example.com', password: 'hashedpassword' })).rejects.toThrow(
         'Failed to create user',
       );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('uses a supplied transaction executor for repository operations', async () => {
+    const tx = {} as Tx;
+    const mockUser: User = {
+      id: 'uuid-tx',
+      email: 'transaction@example.com',
+      password: 'hashedpassword',
+      firstName: null,
+      lastName: null,
+      role: 'USER',
+      createdAt: new Date(),
+      updatedAt: null,
+      deletedAt: null,
+    };
+    const where = jest.fn((_condition: SQL) => Promise.resolve<User[]>([mockUser]));
+    const returning = jest.fn(() => Promise.resolve<User[]>([mockUser]));
+    const values = jest.fn().mockReturnValue({ returning });
+    const insert = jest.fn().mockReturnValue({ values });
+    const txExecutor = {
+      select: () => ({ from: () => ({ where }) }),
+      insert,
+    };
+    const database = {
+      getExecutor: jest.fn().mockReturnValue(txExecutor),
+    };
+    const fixture = await Test.createTestingModule({
+      providers: [UsersRepository, { provide: DatabaseService, useValue: database }],
+    }).compile();
+
+    try {
+      const repository = fixture.get(UsersRepository);
+      await expect(repository.findByEmail(mockUser.email, tx)).resolves.toEqual(mockUser);
+      await expect(repository.create({ email: mockUser.email, password: mockUser.password }, tx)).resolves.toEqual(mockUser);
+      expect(database.getExecutor).toHaveBeenNthCalledWith(1, tx);
+      expect(database.getExecutor).toHaveBeenNthCalledWith(2, tx);
     } finally {
       await fixture.close();
     }

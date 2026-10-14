@@ -1,8 +1,10 @@
 import { jest } from '@jest/globals';
 import { ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AuthResponceCodes } from '../../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../../shared/libs/hasher.lib.js';
+import { JWT } from '../../../../shared/libs/jwt.lit.js';
 import { type User } from '../../../users/entities/index.js';
 import { UsersRepository } from '../../../users/repositories/users.repository.js';
 import { AuthService } from '../auth.service.js';
@@ -10,12 +12,23 @@ import { AuthService } from '../auth.service.js';
 describe('AuthService', () => {
   let service: AuthService;
   let usersRepository: jest.Mocked<UsersRepository>;
+  let configGet: jest.Mock<(key: string) => string>;
 
   beforeEach(async () => {
     const mockUsersRepository = {
       findByEmail: jest.fn(),
       create: jest.fn(),
     };
+    const configValues: Record<string, string> = {
+      AUTH_JWT_ACCESS_SECRET: 'access-secret',
+      AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN: '15m',
+      AUTH_JWT_REFRESH_SECRET: 'refresh-secret',
+      AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN: '12h',
+    };
+    const mockConfigService = {
+      get: jest.fn((key: string) => configValues[key]),
+    };
+    configGet = mockConfigService.get;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -23,6 +36,10 @@ describe('AuthService', () => {
         {
           provide: UsersRepository,
           useValue: mockUsersRepository,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -134,6 +151,72 @@ describe('AuthService', () => {
           password: 'plainPassword123',
         }),
       ).rejects.toThrow('Failed to create user');
+    });
+  });
+
+  describe('login', () => {
+    const args = { email: 'test@example.com', password: 'password123' };
+    const user: User = {
+      id: 'user-1',
+      email: args.email,
+      password: 'hashed-password',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'USER',
+      createdAt: new Date('2026-02-01T12:00:00Z'),
+      updatedAt: null,
+      deletedAt: null,
+    };
+
+    it('throws NotFoundException when the email does not match a user', async () => {
+      usersRepository.findByEmail.mockResolvedValue(null);
+      const verifySpy = jest.spyOn(Hasher, 'verify');
+
+      await expect(service.login(args)).rejects.toMatchObject({
+        response: {
+          code: AuthResponceCodes.UserNotFound,
+          message: 'User not found',
+        },
+      });
+      expect(usersRepository.findByEmail).toHaveBeenCalledWith(args.email);
+      expect(verifySpy).not.toHaveBeenCalled();
+    });
+
+    it('throws UnprocessableEntityException when the password is incorrect', async () => {
+      usersRepository.findByEmail.mockResolvedValue(user);
+      const verifySpy = jest.spyOn(Hasher, 'verify').mockResolvedValue(false);
+      const signSpy = jest.spyOn(JWT, 'sign');
+
+      await expect(service.login(args)).rejects.toMatchObject({
+        response: {
+          code: AuthResponceCodes.InvalidCredentials,
+          message: 'Invalid credentials',
+        },
+      });
+      expect(verifySpy).toHaveBeenCalledWith(user.password, args.password);
+      expect(signSpy).not.toHaveBeenCalled();
+    });
+
+    it('verifies the password and returns access and refresh tokens', async () => {
+      usersRepository.findByEmail.mockResolvedValue(user);
+      const verifySpy = jest.spyOn(Hasher, 'verify').mockResolvedValue(true);
+      const signSpy = jest.spyOn(JWT, 'sign').mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
+
+      await expect(service.login(args)).resolves.toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      });
+
+      expect(verifySpy).toHaveBeenCalledWith(user.password, args.password);
+      expect(signSpy).toHaveBeenNthCalledWith(1, { sub: user.id }, { secret: 'access-secret', expiresIn: '15m' });
+      expect(signSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ sub: user.id, jti: expect.any(String) }), {
+        secret: 'refresh-secret',
+        expiresIn: '12h',
+      });
+      expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_SECRET', { infer: true });
+      expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN', { infer: true });
+      expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_SECRET', { infer: true });
+      expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN', { infer: true });
     });
   });
 });

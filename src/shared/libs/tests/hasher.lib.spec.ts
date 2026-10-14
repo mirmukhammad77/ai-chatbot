@@ -1,4 +1,4 @@
-import { Hasher } from './hasher.lib.js';
+import { Hasher } from '../hasher.lib.js';
 
 describe('Hasher', () => {
   it('hashes and verifies a password without accepting a different password', async () => {

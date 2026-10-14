@@ -3,6 +3,7 @@ import { ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { type CreateUserDto, type CreateUserResponseDto } from '../../dtos/create-user.dto.js';
 import { AuthService } from '../../services/auth.service.js';
+import type { LoginResponse } from '../../types/login-responce.js';
 import { AuthController } from '../auth.controller.js';
 
 describe('AuthController', () => {
@@ -12,6 +13,7 @@ describe('AuthController', () => {
   beforeEach(async () => {
     const mockAuthService = {
       register: jest.fn(),
+      login: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -71,6 +73,36 @@ describe('AuthController', () => {
 
       await expect(controller.register(dto)).rejects.toThrow(ConflictException);
       expect(authService.register).toHaveBeenCalledWith(dto);
+    });
+  });
+
+  describe('login', () => {
+    it('calls authService.login and returns its token response', async () => {
+      const dto: CreateUserDto = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      const expectedResponse: LoginResponse = {
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      };
+      authService.login.mockResolvedValue(expectedResponse);
+
+      await expect(controller.login(dto)).resolves.toEqual(expectedResponse);
+      expect(authService.login).toHaveBeenCalledTimes(1);
+      expect(authService.login).toHaveBeenCalledWith(dto);
+    });
+
+    it('propagates exceptions thrown by authService.login', async () => {
+      const dto: CreateUserDto = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      const error = new Error('Login failed');
+      authService.login.mockRejectedValue(error);
+
+      await expect(controller.login(dto)).rejects.toBe(error);
+      expect(authService.login).toHaveBeenCalledWith(dto);
     });
   });
 });

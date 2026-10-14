@@ -9,6 +9,12 @@ export const envConfigSchema = z.object({
   DATABASE_NAME: z.string().nonempty(),
   DATABASE_USERNAME: z.string().nonempty(),
   DATABASE_PASSWORD: z.string().nonempty(),
+
+  AUTH_JWT_ACCESS_SECRET: z.string().nonempty(),
+  AUTH_JWT_REFRESH_SECRET: z.string().nonempty(),
+  AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN: z.string().nonempty(),
+  AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN: z.string().nonempty(),
+  AUTH_REFRESH_COOKIE_MAX_AGE_MS: z.coerce.number().int().positive().default(43200000),
 });
 
 export type EnvConfig = z.infer<typeof envConfigSchema>;
