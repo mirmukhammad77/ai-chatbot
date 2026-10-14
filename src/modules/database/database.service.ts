@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { defineRelations } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { type EnvConfig } from '../../shared/configs/env.config.js';
+import type { EnvConfig } from '../../shared/configs/env.config.js';
 import * as schema from './schema/index.js';
-import { type Tx } from './unit-of-work.js';
+import type { Tx } from './unit-of-work.js';
 
 const relations = defineRelations(schema);
 

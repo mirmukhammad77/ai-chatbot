@@ -15,6 +15,7 @@ const ignoresConfig = {
     'eslint.config.mjs',
     'prettier.config.cjs',
     'jest.config.mjs',
+    'jest.config.ts',
     'lint-staged.config.mjs',
     'dist/**',
     'coverage/**',

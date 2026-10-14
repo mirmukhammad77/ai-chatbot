@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
-import { DatabaseService, type Tx } from '../../database/database.service.js';
+import { DatabaseService } from '../../database/database.service.js';
+import type { Tx } from '../../database/unit-of-work.js';
 import { type User, usersTable } from '../entities/index.js';
 
 export type CreateUserParams = {
