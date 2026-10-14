@@ -1,3 +1,3 @@
-export * from '#/modules/users/entities';
-export * from '#/modules/conversations/entities';
-export * from '#/modules/messages/entities';
+export * from '../../users/entities/index.js';
+export * from '../../conversations/entities/index.js';
+export * from '../../messages/entities/index.js';

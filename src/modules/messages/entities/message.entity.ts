@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { check, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
-import { conversationsTable } from '../../conversations/entities/conversation.entity.ts';
+import { conversationsTable } from '../../conversations/entities/conversation.entity.js';
 
 export const MessageRoleEnum = pgEnum('message_role_enum', ['user', 'assistant', 'system']);
 export type MessageRoleEnumType = (typeof MessageRoleEnum.enumValues)[number];

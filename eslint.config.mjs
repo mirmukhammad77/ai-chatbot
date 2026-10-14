@@ -15,6 +15,7 @@ const ignoresConfig = {
     'eslint.config.mjs',
     'prettier.config.cjs',
     'jest.config.mjs',
+    'jest.config.ts',
     'lint-staged.config.mjs',
     'dist/**',
     'coverage/**',
@@ -315,9 +316,12 @@ const mainConfig = {
 
 /** @type {import('eslint').Linter.Config}*/
 const jestConfig = {
-  files: ['**/*.spec.ts', '**/*.test.ts'],
+  files: ['**/*.spec.ts', '**/*.test.ts', '**/*.e2e-spec.ts'],
   plugins: {
     jest: pluginJest,
+  },
+  settings: {
+    jest: { version: 29 },
   },
   languageOptions: {
     globals: {

@@ -1,1 +1,1 @@
-export * from './user.entity.ts';
+export * from './user.entity.js';
