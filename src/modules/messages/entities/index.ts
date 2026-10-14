@@ -1,1 +1,1 @@
-export * from './message.entity.ts';
+export * from './message.entity.js';

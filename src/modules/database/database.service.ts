@@ -1,32 +1,37 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { defineRelations } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { type EnvConfig } from '#/shared/configs/env.config';
-import * as schema from './schema';
+import { Pool } from 'pg';
+import { type EnvConfig } from '../../shared/configs/env.config.js';
+import * as schema from './schema/index.js';
+import { type Tx } from './unit-of-work.js';
 
 const relations = defineRelations(schema);
 
 type Database = NodePgDatabase<typeof relations>;
-type Tx = Parameters<Database['transaction']>[0] extends (tx: infer T) => Promise<unknown> ? T : never;
 
 @Injectable()
-export class DatabaseService {
+export class DatabaseService implements OnModuleDestroy {
   public readonly db: Database;
+  private readonly pool: Pool;
 
-  constructor(private readonly configService: ConfigService<EnvConfig, true>) {
-    const host = configService.get('DATABASE_HOST', { infer: true });
-    const port = configService.get('DATABASE_PORT', { infer: true });
-    const name = configService.get('DATABASE_NAME', { infer: true });
-    const user = configService.get('DATABASE_USERNAME', { infer: true });
-    const password = configService.get('DATABASE_PASSWORD', { infer: true });
-
-    const connectionString = `postgresql://${user}:${password}@${host}:${port}/${name}`;
-
-    this.db = drizzle({ connection: connectionString, relations });
+  constructor(configService: ConfigService<EnvConfig, true>) {
+    this.pool = new Pool({
+      host: configService.get('DATABASE_HOST', { infer: true }),
+      port: configService.get('DATABASE_PORT', { infer: true }),
+      database: configService.get('DATABASE_NAME', { infer: true }),
+      user: configService.get('DATABASE_USERNAME', { infer: true }),
+      password: configService.get('DATABASE_PASSWORD', { infer: true }),
+    });
+    this.db = drizzle({ client: this.pool, relations });
   }
 
   getExecutor(tx?: Tx): Tx | Database {
     return tx ?? this.db;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.pool.end();
   }
 }

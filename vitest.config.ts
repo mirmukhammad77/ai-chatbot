@@ -1,14 +1,33 @@
-import tsconfigPaths from 'vite-tsconfig-paths';
+import ts from 'typescript';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // Resolves the path aliases declared in tsconfig.json, including the ones
-  // added by `nest g library`.
-  plugins: [tsconfigPaths()],
+  plugins: [
+    {
+      name: 'nest-typescript-metadata',
+      enforce: 'pre',
+      transform(code, id) {
+        if (!id.endsWith('.ts') || id.includes('/node_modules/')) {
+          return;
+        }
+        const output = ts.transpileModule(code, {
+          fileName: id,
+          compilerOptions: {
+            module: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ES2023,
+            experimentalDecorators: true,
+            emitDecoratorMetadata: true,
+            esModuleInterop: true,
+            sourceMap: true,
+          },
+        });
+        return { code: output.outputText, map: output.sourceMapText };
+      },
+    },
+  ],
   test: {
-    passWithNoTests: true,
     globals: true,
-    root: './',
-    include: ['**/*.spec.ts'],
+    include: ['src/**/*.spec.ts'],
+    setupFiles: ['./test/setup.ts'],
   },
 });

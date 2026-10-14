@@ -1,5 +1,5 @@
 import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { usersTable } from '../../users/entities/user.entity.ts';
+import { usersTable } from '../../users/entities/user.entity.js';
 
 export const conversationsTable = pgTable(
   'conversations',
