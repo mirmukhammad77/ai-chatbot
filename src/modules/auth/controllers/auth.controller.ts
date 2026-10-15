@@ -1,11 +1,22 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
+import type { Response } from 'express';
+import { EnvConfig } from '../../../shared/configs/env.config.js';
 import { CreateUserDto, CreateUserResponseDto } from '../dtos/create-user.dto.js';
 import { AuthService } from '../services/auth.service.js';
-import { LoginResponse } from '../types/login-responce.js';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly refreshMaxAge: number;
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService<EnvConfig, true>,
+  ) {
+    const raw = this.configService.get('AUTH_REFRESH_COOKIE_MAX_AGE_MS', { infer: true });
+    this.refreshMaxAge = typeof raw === 'number' ? raw : Number(raw);
+  }
 
   @Post('register')
   @HttpCode(201)
@@ -15,7 +26,40 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
-  async login(@Body() params: CreateUserDto): Promise<LoginResponse> {
-    return await this.authService.login(params);
+  async login(@Body() params: CreateUserDto, @Res({ passthrough: true }) res: Response) {
+    const { accessToken, refreshToken, id, email, firstName, lastName, role } = await this.authService.login(params);
+
+    const csrfToken = this.generateCsrfToken();
+
+    this.setAuthCookies(res, refreshToken, csrfToken);
+
+    return {
+      accessToken,
+      id,
+      email,
+      firstName,
+      lastName,
+      role,
+    };
+  }
+
+  setAuthCookies(res: Response, refreshToken: string, csrfToken: string): void {
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: this.refreshMaxAge,
+    });
+
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: this.refreshMaxAge,
+    });
+  }
+
+  generateCsrfToken(): string {
+    return randomBytes(32).toString('hex');
   }
 }
