@@ -57,6 +57,61 @@ describe('UsersRepository', () => {
     }
   });
 
+  it('looks up an active user by id using the supplied transaction executor', async () => {
+    const mockUser: User = {
+      id: 'uuid-3',
+      email: 'id@example.com',
+      password: 'hashedpassword',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'USER',
+      createdAt: new Date(),
+      updatedAt: null,
+      deletedAt: null,
+    };
+    const where = jest.fn((_condition: SQL) => Promise.resolve<User[]>([mockUser]));
+    const txExecutor = {
+      select: () => ({ from: () => ({ where }) }),
+    };
+    const tx = {} as Tx;
+    const database = {
+      getExecutor: jest.fn().mockReturnValue(txExecutor),
+    };
+    const fixture = await Test.createTestingModule({
+      providers: [UsersRepository, { provide: DatabaseService, useValue: database }],
+    }).compile();
+
+    try {
+      const repository = fixture.get(UsersRepository);
+      await expect(repository.findById(mockUser.id, tx)).resolves.toEqual(mockUser);
+
+      const query = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+      expect(query.sql).toContain('"users"."deleted_at" is null');
+      expect(query.sql).toContain('"users"."id" = $1');
+      expect(query.params).toEqual([mockUser.id]);
+      expect(database.getExecutor).toHaveBeenCalledWith(tx);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('returns null when findById finds no active user', async () => {
+    const where = jest.fn((_condition: SQL) => Promise.resolve<User[]>([]));
+    const database = {
+      getExecutor: jest.fn().mockReturnValue({ select: () => ({ from: () => ({ where }) }) }),
+    };
+    const fixture = await Test.createTestingModule({
+      providers: [UsersRepository, { provide: DatabaseService, useValue: database }],
+    }).compile();
+
+    try {
+      const repository = fixture.get(UsersRepository);
+      await expect(repository.findById('missing-user')).resolves.toBeNull();
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('creates and returns a new user', async () => {
     const mockUser: User = {
       id: 'uuid-2',

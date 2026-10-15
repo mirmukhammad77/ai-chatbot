@@ -1,8 +1,9 @@
-import { Body, Controller, HttpCode, Post, Res } from '@nestjs/common';
+import { Body, Controller, Post, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import type { Response } from 'express';
 import { EnvConfig } from '../../../shared/configs/env.config.js';
+import { Public } from '../../../shared/decorators/public.decorator.js';
 import { CreateUserDto, CreateUserResponseDto } from '../dtos/create-user.dto.js';
 import { AuthService } from '../services/auth.service.js';
 
@@ -18,14 +19,14 @@ export class AuthController {
     this.refreshMaxAge = typeof raw === 'number' ? raw : Number(raw);
   }
 
+  @Public()
   @Post('register')
-  @HttpCode(201)
   async register(@Body() params: CreateUserDto): Promise<CreateUserResponseDto> {
     return await this.authService.register(params);
   }
 
+  @Public()
   @Post('login')
-  @HttpCode(200)
   async login(@Body() params: CreateUserDto, @Res({ passthrough: true }) res: Response) {
     const { accessToken, refreshToken, id, email, firstName, lastName, role } = await this.authService.login(params);
 

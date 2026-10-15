@@ -1,10 +1,10 @@
 import { jest } from '@jest/globals';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AuthResponseCodes } from '../../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../../shared/libs/hasher.lib.js';
-import { JWT } from '../../../../shared/libs/jwt.lit.js';
+import { InvalidTokenError, JWT } from '../../../../shared/libs/jwt.lit.js';
 import { type User } from '../../../users/entities/index.js';
 import { UsersRepository } from '../../../users/repositories/users.repository.js';
 import { AuthService } from '../auth.service.js';
@@ -222,6 +222,62 @@ describe('AuthService', () => {
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_SECRET', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN', { infer: true });
+    });
+  });
+
+  describe('verifyAccessToken', () => {
+    it('verifies the access token with the configured secret and clock tolerance', async () => {
+      const payload = { sub: 'user-1' };
+      const verifySpy = jest.spyOn(JWT, 'verify').mockResolvedValue(payload);
+
+      await expect(service.verifyAccessToken('access-token')).resolves.toEqual(payload);
+      expect(verifySpy).toHaveBeenCalledWith('access-token', {
+        secret: 'access-secret',
+        clockTolerance: 5,
+      });
+    });
+
+    it('translates an invalid access token into an unauthorized exception', async () => {
+      jest.spyOn(JWT, 'verify').mockRejectedValue(new InvalidTokenError());
+
+      await expect(service.verifyAccessToken('invalid-token')).rejects.toThrow(
+        new UnauthorizedException('Invalid or expired access token'),
+      );
+    });
+
+    it('rethrows unexpected access-token verification errors', async () => {
+      const error = new Error('Verification failed');
+      jest.spyOn(JWT, 'verify').mockRejectedValue(error);
+
+      await expect(service.verifyAccessToken('access-token')).rejects.toBe(error);
+    });
+  });
+
+  describe('verifyRefreshToken', () => {
+    it('verifies the refresh token with the configured secret and clock tolerance', async () => {
+      const payload = { sub: 'user-1', jti: 'token-id' };
+      const verifySpy = jest.spyOn(JWT, 'verify').mockResolvedValue(payload);
+
+      await expect(service.verifyRefreshToken('refresh-token')).resolves.toEqual(payload);
+      expect(verifySpy).toHaveBeenCalledWith('refresh-token', {
+        secret: 'refresh-secret',
+        clockTolerance: 5,
+      });
+    });
+
+    it('translates an invalid refresh token into an unauthorized exception', async () => {
+      jest.spyOn(JWT, 'verify').mockRejectedValue(new InvalidTokenError());
+
+      await expect(service.verifyRefreshToken('invalid-token')).rejects.toThrow(
+        new UnauthorizedException('Invalid or expired refresh token'),
+      );
+    });
+
+    it('rethrows unexpected refresh-token verification errors', async () => {
+      const error = new Error('Verification failed');
+      jest.spyOn(JWT, 'verify').mockRejectedValue(error);
+
+      await expect(service.verifyRefreshToken('refresh-token')).rejects.toBe(error);
     });
   });
 });

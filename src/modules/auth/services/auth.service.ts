@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { EnvConfig } from '../../../shared/configs/env.config.js';
 import { AuthResponseCodes } from '../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../shared/libs/hasher.lib.js';
-import { JWT } from '../../../shared/libs/jwt.lit.js';
+import { InvalidTokenError, JWT } from '../../../shared/libs/jwt.lit.js';
 import { type CreateUserParams, UsersRepository } from '../../users/repositories/users.repository.js';
 import { CreateUserResponseDto } from '../dtos/create-user.dto.js';
 import type { AccessTokenPayload, RefreshTokenPayload } from '../types/auth.payload.js';
@@ -103,5 +103,37 @@ export class AuthService {
     };
 
     return JWT.sign(payload, options);
+  }
+
+  async verifyAccessToken(token: string): Promise<AccessTokenPayload> {
+    const options = {
+      secret: this.configService.get('AUTH_JWT_ACCESS_SECRET', { infer: true }),
+      clockTolerance: 5,
+    };
+
+    try {
+      return await JWT.verify<AccessTokenPayload>(token, options);
+    } catch (error) {
+      if (error instanceof InvalidTokenError) {
+        throw new UnauthorizedException('Invalid or expired access token');
+      }
+      throw error;
+    }
+  }
+
+  async verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
+    const options = {
+      secret: this.configService.get('AUTH_JWT_REFRESH_SECRET', { infer: true }),
+      clockTolerance: 5,
+    };
+
+    try {
+      return await JWT.verify<RefreshTokenPayload>(token, options);
+    } catch (error) {
+      if (error instanceof InvalidTokenError) {
+        throw new UnauthorizedException('Invalid or expired refresh token');
+      }
+      throw error;
+    }
   }
 }
