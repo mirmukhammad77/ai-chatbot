@@ -1,13 +1,14 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { EnvConfig } from '../../../shared/configs/env.config.js';
-import { AuthResponceCodes } from '../../../shared/http/responce-codes.ts/auth-response-codes.js';
+import { AuthResponseCodes } from '../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../shared/libs/hasher.lib.js';
 import { JWT } from '../../../shared/libs/jwt.lit.js';
 import { type CreateUserParams, UsersRepository } from '../../users/repositories/users.repository.js';
 import { CreateUserResponseDto } from '../dtos/create-user.dto.js';
 import type { AccessTokenPayload, RefreshTokenPayload } from '../types/auth.payload.js';
+import type { LoginResponse } from '../types/login-responce.js';
 
 export type LoginArgs = {
   email: string;
@@ -27,7 +28,7 @@ export class AuthService {
     const user = await this.usersRepository.findByEmail(email);
     if (user) {
       throw new ConflictException({
-        code: AuthResponceCodes.UserExists,
+        code: AuthResponseCodes.UserExists,
         message: 'User already exists',
       });
     }
@@ -45,20 +46,20 @@ export class AuthService {
     };
   }
 
-  async login(args: LoginArgs): Promise<{ accessToken: string; refreshToken: string }> {
+  async login(args: LoginArgs): Promise<LoginResponse> {
     const { email, password } = args;
     const user = await this.usersRepository.findByEmail(email);
     if (!user) {
-      throw new NotFoundException({
-        code: AuthResponceCodes.UserNotFound,
-        message: 'User not found',
+      throw new UnauthorizedException({
+        code: AuthResponseCodes.InvalidCredentials,
+        message: 'Invalid credentials',
       });
     }
 
     const passwordMatch = await Hasher.verify(user.password, password);
     if (!passwordMatch) {
       throw new UnprocessableEntityException({
-        code: AuthResponceCodes.InvalidCredentials,
+        code: AuthResponseCodes.InvalidCredentials,
         message: 'Invalid credentials',
       });
     }
@@ -66,7 +67,15 @@ export class AuthService {
     const accessToken = await this.createAccessToken(user.id);
     const refreshToken = await this.createRefreshToken(user.id);
 
-    return { accessToken, refreshToken };
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      accessToken,
+      refreshToken,
+    };
   }
 
   async createAccessToken(userId: string): Promise<string> {

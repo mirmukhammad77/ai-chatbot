@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { AuthResponceCodes } from '../../../../shared/http/responce-codes.ts/auth-response-codes.js';
+import { AuthResponseCodes } from '../../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../../shared/libs/hasher.lib.js';
 import { JWT } from '../../../../shared/libs/jwt.lit.js';
 import { type User } from '../../../users/entities/index.js';
@@ -88,7 +88,7 @@ describe('AuthService', () => {
         }),
       ).rejects.toMatchObject({
         response: {
-          code: AuthResponceCodes.UserExists,
+          code: AuthResponseCodes.UserExists,
           message: 'User already exists',
         },
       });
@@ -174,8 +174,8 @@ describe('AuthService', () => {
 
       await expect(service.login(args)).rejects.toMatchObject({
         response: {
-          code: AuthResponceCodes.UserNotFound,
-          message: 'User not found',
+          code: AuthResponseCodes.InvalidCredentials,
+          message: 'Invalid credentials',
         },
       });
       expect(usersRepository.findByEmail).toHaveBeenCalledWith(args.email);
@@ -189,7 +189,7 @@ describe('AuthService', () => {
 
       await expect(service.login(args)).rejects.toMatchObject({
         response: {
-          code: AuthResponceCodes.InvalidCredentials,
+          code: AuthResponseCodes.InvalidCredentials,
           message: 'Invalid credentials',
         },
       });
@@ -203,6 +203,11 @@ describe('AuthService', () => {
       const signSpy = jest.spyOn(JWT, 'sign').mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
 
       await expect(service.login(args)).resolves.toEqual({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });

@@ -1,5 +1,4 @@
-export const AuthResponceCodes = {
+export const AuthResponseCodes = {
   UserExists: 'user_already_exists',
-  UserNotFound: 'user_not_found',
   InvalidCredentials: 'invalid_credentials',
 };
