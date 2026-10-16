@@ -1,7 +1,8 @@
-import { Module, ValidationPipe } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_PIPE } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { AccessTokenGuard } from './modules/auth/guards/access-token.guard.js';
 import { ConversationsModule } from './modules/conversations/conversations.module.js';
 import { DatabaseModule } from './modules/database/database.module.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -19,9 +20,11 @@ import { validateEnvConfig } from './shared/configs/env.config.js';
     ConversationsModule,
     AuthModule,
   ],
-  controllers: [],
   providers: [
-    { provide: APP_PIPE, useFactory: () => new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }) },
+    {
+      provide: APP_GUARD,
+      useClass: AccessTokenGuard,
+    },
   ],
 })
 export class AppModule {}

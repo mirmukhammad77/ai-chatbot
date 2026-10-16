@@ -38,4 +38,15 @@ export class UsersRepository {
 
     return user ?? null;
   }
+
+  async findById(id: string, tx?: Tx): Promise<User | null> {
+    const db = this.databaseService.getExecutor(tx);
+
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, id), isNull(usersTable.deletedAt)));
+
+    return user ?? null;
+  }
 }
