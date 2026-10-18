@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import type { Response } from 'express';
@@ -67,6 +67,28 @@ export class AuthController {
     this.setAuthCookies(res, newRefreshToken, newCsrfToken);
 
     return { accessToken };
+  }
+
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @Cookie('refresh_token') refreshToken: string | null,
+    @Cookie('csrf_token') csrfToken: string | null,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('missing refresh token');
+    }
+
+    if (!csrfToken) {
+      throw new UnauthorizedException('missing csrf token');
+    }
+
+    await this.authService.revokeRefreshToken(refreshToken);
+
+    res.clearCookie('refresh_token');
+    res.clearCookie('csrf_token');
   }
 
   setAuthCookies(res: Response, refreshToken: string, csrfToken: string): void {

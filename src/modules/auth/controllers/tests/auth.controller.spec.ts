@@ -24,6 +24,7 @@ describe('AuthController', () => {
       register: jest.fn(),
       login: jest.fn(),
       refreshToken: jest.fn(),
+      revokeRefreshToken: jest.fn(),
     };
 
     const mockConfigService = {
@@ -251,6 +252,53 @@ describe('AuthController', () => {
         sameSite: 'strict',
         maxAge: defaultRefreshMaxAge,
       });
+    });
+  });
+
+  describe('logout', () => {
+    it('throws UnauthorizedException when the refresh token is missing', async () => {
+      const mockRes = createMockResponse();
+
+      await expect(controller.logout(null, 'csrf-token', mockRes)).rejects.toThrow(
+        new UnauthorizedException('missing refresh token'),
+      );
+      expect(authService.revokeRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedException when the CSRF token is missing', async () => {
+      const mockRes = createMockResponse();
+
+      await expect(controller.logout('refresh-token', null, mockRes)).rejects.toThrow(
+        new UnauthorizedException('missing csrf token'),
+      );
+      expect(authService.revokeRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it('revokes the refresh token and clears both auth cookies', async () => {
+      const mockRes = {
+        ...createMockResponse(),
+        clearCookie: jest.fn(),
+      } as unknown as Response;
+
+      await controller.logout('refresh-token', 'csrf-token', mockRes);
+
+      expect(authService.revokeRefreshToken).toHaveBeenCalledTimes(1);
+      expect(authService.revokeRefreshToken).toHaveBeenCalledWith('refresh-token');
+      expect(mockRes.clearCookie).toHaveBeenNthCalledWith(1, 'refresh_token');
+      expect(mockRes.clearCookie).toHaveBeenNthCalledWith(2, 'csrf_token');
+    });
+
+    it('propagates revocation failures without clearing cookies', async () => {
+      const error = new UnauthorizedException('Invalid or revoked token');
+      authService.revokeRefreshToken.mockRejectedValue(error);
+      const mockRes = {
+        ...createMockResponse(),
+        clearCookie: jest.fn(),
+      } as unknown as Response;
+
+      await expect(controller.logout('refresh-token', 'csrf-token', mockRes)).rejects.toBe(error);
+
+      expect(mockRes.clearCookie).not.toHaveBeenCalled();
     });
   });
 
