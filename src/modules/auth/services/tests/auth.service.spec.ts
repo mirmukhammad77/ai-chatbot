@@ -1,10 +1,13 @@
 import { jest } from '@jest/globals';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AuthResponseCodes } from '../../../../shared/http/responce-codes.ts/auth-response-codes.js';
 import { Hasher } from '../../../../shared/libs/hasher.lib.js';
-import { InvalidTokenError, JWT } from '../../../../shared/libs/jwt.lit.js';
+import { InvalidTokenError, JWT } from '../../../../shared/libs/jwt.lib.js';
+import { RefreshTokenHasher } from '../../../../shared/libs/refresh-token.hasher.lib.js';
+import { type Tx, UnitOfWork } from '../../../database/unit-of-work.js';
+import { SessionsRepository } from '../../../sessions/repositories/sessions.repository.js';
 import { type User } from '../../../users/entities/index.js';
 import { UsersRepository } from '../../../users/repositories/users.repository.js';
 import { AuthService } from '../auth.service.js';
@@ -12,7 +15,8 @@ import { AuthService } from '../auth.service.js';
 describe('AuthService', () => {
   let service: AuthService;
   let usersRepository: jest.Mocked<UsersRepository>;
-  let configGet: jest.Mock<(key: string) => string>;
+  let sessionsRepository: jest.Mocked<SessionsRepository>;
+  let configGet: jest.Mock<(key: string) => string | number | undefined>;
 
   beforeEach(async () => {
     const mockUsersRepository = {
@@ -20,11 +24,19 @@ describe('AuthService', () => {
       findById: jest.fn(),
       create: jest.fn(),
     };
-    const configValues: Record<string, string> = {
+    const mockSessionsRepository = {
+      createSession: jest.fn(() => Promise.resolve({ refreshTokenHash: 'refresh-token' })),
+      rotateRefreshToken: jest.fn(() => Promise.resolve({ refreshTokenHash: 'new-refresh-token' })),
+      revokeSession: jest.fn(() => Promise.resolve(true)),
+    };
+    const mockUnitOfWork: Pick<UnitOfWork, 'run'> = {
+      run: async <T>(callback: (tx: Tx) => Promise<T>) => callback({} as Tx),
+    };
+    const configValues: Record<string, string | number> = {
       AUTH_JWT_ACCESS_SECRET: 'access-secret',
       AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN: '15m',
       AUTH_JWT_REFRESH_SECRET: 'refresh-secret',
-      AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN: '12h',
+      AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN: 43200000,
     };
     const mockConfigService = {
       get: jest.fn((key: string) => configValues[key]),
@@ -42,11 +54,20 @@ describe('AuthService', () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
+        {
+          provide: SessionsRepository,
+          useValue: mockSessionsRepository,
+        },
+        {
+          provide: UnitOfWork,
+          useValue: mockUnitOfWork,
+        },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     usersRepository = module.get(UsersRepository);
+    sessionsRepository = module.get(SessionsRepository);
   });
 
   afterEach(() => {
@@ -202,6 +223,7 @@ describe('AuthService', () => {
       usersRepository.findByEmail.mockResolvedValue(user);
       const verifySpy = jest.spyOn(Hasher, 'verify').mockResolvedValue(true);
       const signSpy = jest.spyOn(JWT, 'sign').mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
+      const refreshTokenHash = await RefreshTokenHasher.hash('refresh-token');
 
       await expect(service.login(args)).resolves.toEqual({
         id: user.id,
@@ -217,12 +239,36 @@ describe('AuthService', () => {
       expect(signSpy).toHaveBeenNthCalledWith(1, { sub: user.id }, { secret: 'access-secret', expiresIn: '15m' });
       expect(signSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({ sub: user.id, jti: expect.any(String) }), {
         secret: 'refresh-secret',
-        expiresIn: '12h',
+        expiresIn: '43200 seconds',
       });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_SECRET', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_SECRET', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN', { infer: true });
+      expect(sessionsRepository.createSession).toHaveBeenCalledWith(user.id, refreshTokenHash, expect.any(Date));
+    });
+
+    it('throws when it cannot persist the refresh-token session', async () => {
+      usersRepository.findByEmail.mockResolvedValue(user);
+      jest.spyOn(Hasher, 'verify').mockResolvedValue(true);
+      jest.spyOn(JWT, 'sign').mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token');
+      sessionsRepository.createSession.mockResolvedValue(null);
+
+      await expect(service.login(args)).rejects.toThrow(new InternalServerErrorException('Failed to create session'));
+    });
+  });
+
+  describe('createRefreshToken', () => {
+    it('signs a refresh token using the configured millisecond lifetime', async () => {
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const token = await service.createRefreshToken('user-1');
+      const payload = await JWT.verify<{ sub: string; jti: string; exp?: number }>(token, {
+        secret: 'refresh-secret',
+      });
+
+      expect(payload.sub).toBe('user-1');
+      expect(payload.exp).toBeGreaterThanOrEqual(issuedAt + 43200);
+      expect(payload.exp).toBeLessThanOrEqual(issuedAt + 43201);
     });
   });
 
@@ -244,6 +290,10 @@ describe('AuthService', () => {
       usersRepository.findById.mockResolvedValue(user);
       const createAccessTokenSpy = jest.spyOn(service, 'createAccessToken').mockResolvedValue('new-access-token');
       const createRefreshTokenSpy = jest.spyOn(service, 'createRefreshToken').mockResolvedValue('new-refresh-token');
+      const hashSpy = jest
+        .spyOn(RefreshTokenHasher, 'hash')
+        .mockResolvedValueOnce('old-token-hash')
+        .mockResolvedValueOnce('new-token-hash');
 
       await expect(service.refreshToken('refresh-token')).resolves.toEqual({
         accessToken: 'new-access-token',
@@ -251,9 +301,19 @@ describe('AuthService', () => {
       });
 
       expect(service.verifyRefreshToken).toHaveBeenCalledWith('refresh-token');
-      expect(usersRepository.findById).toHaveBeenCalledWith(user.id);
+      expect(usersRepository.findById).toHaveBeenCalledWith(user.id, expect.anything());
       expect(createAccessTokenSpy).toHaveBeenCalledWith(user.id);
       expect(createRefreshTokenSpy).toHaveBeenCalledWith(user.id);
+      expect(hashSpy).toHaveBeenNthCalledWith(1, 'refresh-token');
+      expect(hashSpy).toHaveBeenNthCalledWith(2, 'new-refresh-token');
+      expect(sessionsRepository.rotateRefreshToken).toHaveBeenCalledWith(
+        {
+          oldRefreshTokenHash: 'old-token-hash',
+          newRefreshTokenHash: 'new-token-hash',
+          refreshTokenExpiresAt: expect.any(Date),
+        },
+        expect.anything(),
+      );
     });
 
     it('throws UnauthorizedException and does not create tokens if the user no longer exists', async () => {
@@ -264,7 +324,7 @@ describe('AuthService', () => {
 
       await expect(service.refreshToken('refresh-token')).rejects.toThrow(new UnauthorizedException('User not found'));
 
-      expect(usersRepository.findById).toHaveBeenCalledWith(user.id);
+      expect(usersRepository.findById).toHaveBeenCalledWith(user.id, expect.anything());
       expect(createAccessTokenSpy).not.toHaveBeenCalled();
       expect(createRefreshTokenSpy).not.toHaveBeenCalled();
     });
@@ -276,6 +336,44 @@ describe('AuthService', () => {
       await expect(service.refreshToken('invalid-refresh-token')).rejects.toBe(error);
 
       expect(usersRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('rejects a refresh token when its session is missing, expired, or revoked', async () => {
+      jest.spyOn(service, 'verifyRefreshToken').mockResolvedValue({ sub: user.id, jti: 'token-id' });
+      usersRepository.findById.mockResolvedValue(user);
+      sessionsRepository.rotateRefreshToken.mockResolvedValue(null);
+      jest.spyOn(service, 'createAccessToken').mockResolvedValue('new-access-token');
+      jest.spyOn(service, 'createRefreshToken').mockResolvedValue('new-refresh-token');
+
+      await expect(service.refreshToken('refresh-token')).rejects.toMatchObject({
+        response: {
+          code: AuthResponseCodes.InvalidCredentials,
+          message: 'Invalid or revoked token',
+        },
+      });
+    });
+  });
+
+  describe('revokeRefreshToken', () => {
+    it('hashes the refresh token and revokes its session', async () => {
+      const hashSpy = jest.spyOn(RefreshTokenHasher, 'hash').mockResolvedValue('stored-token-hash');
+
+      await expect(service.revokeRefreshToken('refresh-token')).resolves.toBeUndefined();
+
+      expect(hashSpy).toHaveBeenCalledWith('refresh-token');
+      expect(sessionsRepository.revokeSession).toHaveBeenCalledWith('stored-token-hash');
+    });
+
+    it('rejects a refresh token when its session cannot be revoked', async () => {
+      jest.spyOn(RefreshTokenHasher, 'hash').mockResolvedValue('unknown-token-hash');
+      sessionsRepository.revokeSession.mockResolvedValue(false);
+
+      await expect(service.revokeRefreshToken('unknown-token')).rejects.toMatchObject({
+        response: {
+          code: AuthResponseCodes.InvalidCredentials,
+          message: 'Invalid or revoked token',
+        },
+      });
     });
   });
 
