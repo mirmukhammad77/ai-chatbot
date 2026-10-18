@@ -17,6 +17,7 @@ describe('AuthService', () => {
   beforeEach(async () => {
     const mockUsersRepository = {
       findByEmail: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
     };
     const configValues: Record<string, string> = {
@@ -222,6 +223,59 @@ describe('AuthService', () => {
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_ACCESS_TOKEN_EXPIRES_IN', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_SECRET', { infer: true });
       expect(configGet).toHaveBeenCalledWith('AUTH_JWT_REFRESH_TOKEN_EXPIRES_IN', { infer: true });
+    });
+  });
+
+  describe('refreshToken', () => {
+    const user: User = {
+      id: 'user-1',
+      email: 'test@example.com',
+      password: 'hashed-password',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'USER',
+      createdAt: new Date('2026-02-01T12:00:00Z'),
+      updatedAt: null,
+      deletedAt: null,
+    };
+
+    it('verifies the refresh token, finds the user, and returns rotated tokens', async () => {
+      jest.spyOn(service, 'verifyRefreshToken').mockResolvedValue({ sub: user.id, jti: 'token-id' });
+      usersRepository.findById.mockResolvedValue(user);
+      const createAccessTokenSpy = jest.spyOn(service, 'createAccessToken').mockResolvedValue('new-access-token');
+      const createRefreshTokenSpy = jest.spyOn(service, 'createRefreshToken').mockResolvedValue('new-refresh-token');
+
+      await expect(service.refreshToken('refresh-token')).resolves.toEqual({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      });
+
+      expect(service.verifyRefreshToken).toHaveBeenCalledWith('refresh-token');
+      expect(usersRepository.findById).toHaveBeenCalledWith(user.id);
+      expect(createAccessTokenSpy).toHaveBeenCalledWith(user.id);
+      expect(createRefreshTokenSpy).toHaveBeenCalledWith(user.id);
+    });
+
+    it('throws UnauthorizedException and does not create tokens if the user no longer exists', async () => {
+      jest.spyOn(service, 'verifyRefreshToken').mockResolvedValue({ sub: user.id, jti: 'token-id' });
+      usersRepository.findById.mockResolvedValue(null);
+      const createAccessTokenSpy = jest.spyOn(service, 'createAccessToken');
+      const createRefreshTokenSpy = jest.spyOn(service, 'createRefreshToken');
+
+      await expect(service.refreshToken('refresh-token')).rejects.toThrow(new UnauthorizedException('User not found'));
+
+      expect(usersRepository.findById).toHaveBeenCalledWith(user.id);
+      expect(createAccessTokenSpy).not.toHaveBeenCalled();
+      expect(createRefreshTokenSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not look up the user when refresh-token verification fails', async () => {
+      const error = new UnauthorizedException('Invalid or expired refresh token');
+      jest.spyOn(service, 'verifyRefreshToken').mockRejectedValue(error);
+
+      await expect(service.refreshToken('invalid-refresh-token')).rejects.toBe(error);
+
+      expect(usersRepository.findById).not.toHaveBeenCalled();
     });
   });
 

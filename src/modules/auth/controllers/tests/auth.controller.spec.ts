@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
@@ -23,6 +23,7 @@ describe('AuthController', () => {
     const mockAuthService = {
       register: jest.fn(),
       login: jest.fn(),
+      refreshToken: jest.fn(),
     };
 
     const mockConfigService = {
@@ -174,6 +175,57 @@ describe('AuthController', () => {
 
       await expect(controller.login(dto, mockRes)).rejects.toBe(error);
       expect(authService.login).toHaveBeenCalledWith(dto);
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refresh', () => {
+    it('throws UnauthorizedException when the refresh token is missing', async () => {
+      const mockRes = createMockResponse();
+
+      await expect(controller.refreshToken(null, 'csrf-token', mockRes)).rejects.toThrow(
+        new UnauthorizedException('missing refresh token'),
+      );
+      expect(authService.refreshToken).not.toHaveBeenCalled();
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedException when the CSRF token is missing', async () => {
+      const mockRes = createMockResponse();
+
+      await expect(controller.refreshToken('refresh-token', null, mockRes)).rejects.toThrow(
+        new UnauthorizedException('missing csrf token'),
+      );
+      expect(authService.refreshToken).not.toHaveBeenCalled();
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+    });
+
+    it('calls authService.refreshToken, rotates auth cookies, and returns the new access token', async () => {
+      authService.refreshToken.mockResolvedValue({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      });
+      const mockRes = createMockResponse();
+      const setAuthCookiesSpy = jest.spyOn(controller, 'setAuthCookies');
+      const generateCsrfTokenSpy = jest.spyOn(controller, 'generateCsrfToken').mockReturnValue('new-csrf-token');
+
+      const result = await controller.refreshToken('old-refresh-token', 'old-csrf-token', mockRes);
+
+      expect(authService.refreshToken).toHaveBeenCalledTimes(1);
+      expect(authService.refreshToken).toHaveBeenCalledWith('old-refresh-token');
+      expect(generateCsrfTokenSpy).toHaveBeenCalledTimes(1);
+      expect(setAuthCookiesSpy).toHaveBeenCalledWith(mockRes, 'new-refresh-token', 'new-csrf-token');
+      expect(result).toEqual({ accessToken: 'new-access-token' });
+      expect(result).not.toHaveProperty('refreshToken');
+    });
+
+    it('propagates exceptions thrown by authService.refreshToken and does not set cookies', async () => {
+      const error = new UnauthorizedException('Invalid or expired refresh token');
+      authService.refreshToken.mockRejectedValue(error);
+      const mockRes = createMockResponse();
+
+      await expect(controller.refreshToken('invalid-refresh-token', 'csrf-token', mockRes)).rejects.toBe(error);
+      expect(authService.refreshToken).toHaveBeenCalledWith('invalid-refresh-token');
       expect(mockRes.cookie).not.toHaveBeenCalled();
     });
   });
