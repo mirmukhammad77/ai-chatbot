@@ -1,9 +1,10 @@
-import { Body, Controller, Post, Res } from '@nestjs/common';
+import { Body, Controller, Post, Res, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import type { Response } from 'express';
 import { EnvConfig } from '../../../shared/configs/env.config.js';
 import { Public } from '../../../shared/decorators/public.decorator.js';
+import { Cookie } from '../decorators/cookie.decorator.js';
 import { CreateUserDto, CreateUserResponseDto } from '../dtos/create-user.dto.js';
 import { AuthService } from '../services/auth.service.js';
 
@@ -42,6 +43,30 @@ export class AuthController {
       lastName,
       role,
     };
+  }
+
+  @Public()
+  @Post('refresh')
+  async refreshToken(
+    @Cookie('refresh_token') refreshToken: string | null,
+    @Cookie('csrf_token') csrfToken: string | null,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('missing refresh token');
+    }
+
+    if (!csrfToken) {
+      throw new UnauthorizedException('missing csrf token');
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } = await this.authService.refreshToken(refreshToken);
+
+    const newCsrfToken = this.generateCsrfToken();
+
+    this.setAuthCookies(res, newRefreshToken, newCsrfToken);
+
+    return { accessToken };
   }
 
   setAuthCookies(res: Response, refreshToken: string, csrfToken: string): void {

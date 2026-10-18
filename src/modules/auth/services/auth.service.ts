@@ -91,6 +91,20 @@ export class AuthService {
     return JWT.sign(payload, options);
   }
 
+  public async refreshToken(token: string): Promise<{ accessToken: string; refreshToken: string }> {
+    const payload = await this.verifyRefreshToken(token);
+
+    const user = await this.usersRepository.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const newAccessToken = await this.createAccessToken(user.id);
+    const newRefreshToken = await this.createRefreshToken(user.id);
+
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  }
+
   public async createRefreshToken(userId: string): Promise<string> {
     const payload: RefreshTokenPayload = {
       sub: userId,
